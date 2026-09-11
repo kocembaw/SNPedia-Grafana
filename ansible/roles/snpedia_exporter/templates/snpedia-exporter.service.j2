@@ -1,0 +1,41 @@
+# {{ ansible_managed }}
+
+[Unit]
+Description=SNPedia Knowledge Exporter
+Documentation=https://www.snpedia.com
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=simple
+User={{ snpedia_exporter_user }}
+Group={{ snpedia_exporter_user }}
+ExecStart={{ snpedia_exporter_install_dir }}/venv/bin/python {{ snpedia_exporter_install_dir }}/exporter.py --config {{ snpedia_exporter_config_dir }}/config.yml
+Environment=PYTHONUNBUFFERED=1
+Environment=PYTHONDONTWRITEBYTECODE=1
+Restart=on-failure
+RestartSec=10
+# Exit code 2 means a configuration error, so restarting would not help.
+RestartPreventExitStatus=2
+
+# Hardening
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+PrivateDevices=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+ProtectClock=true
+ProtectHostname=true
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+RestrictNamespaces=true
+RestrictRealtime=true
+LockPersonality=true
+SystemCallArchitectures=native
+CapabilityBoundingSet=
+AmbientCapabilities=
+
+[Install]
+WantedBy=multi-user.target

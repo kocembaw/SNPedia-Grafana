@@ -1,0 +1,95 @@
+---
+- name: Install packages required to add the Grafana repository
+  ansible.builtin.apt:
+    name:
+      - ca-certificates
+      - python3-debian
+    state: present
+
+- name: Create the APT keyrings directory
+  ansible.builtin.file:
+    path: /etc/apt/keyrings
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: Download the Grafana repository signing key
+  ansible.builtin.get_url:
+    url: https://apt.grafana.com/gpg-full.key
+    dest: /etc/apt/keyrings/grafana.asc
+    owner: root
+    group: root
+    mode: "0644"
+
+- name: Add the Grafana APT repository
+  ansible.builtin.deb822_repository:
+    name: grafana
+    types: deb
+    uris: https://apt.grafana.com
+    suites: stable
+    components: main
+    signed_by: /etc/apt/keyrings/grafana.asc
+  register: grafana_repository
+
+- name: Install Grafana
+  ansible.builtin.apt:
+    name: grafana
+    state: present
+    update_cache: "{{ grafana_repository is changed }}"
+
+- name: Create the provisioning and dashboard directories
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: directory
+    owner: root
+    group: grafana
+    mode: "0755"
+  loop:
+    - /etc/grafana/provisioning/datasources
+    - /etc/grafana/provisioning/dashboards
+    - "{{ grafana_dashboards_dir }}"
+
+- name: Provision the Prometheus data source and the dashboard provider
+  ansible.builtin.copy:
+    src: "{{ project_root }}/monitoring/{{ item.src }}"
+    dest: "/etc/grafana/provisioning/{{ item.dest }}"
+    owner: root
+    group: grafana
+    mode: "0644"
+  loop:
+    - { src: grafana-datasource.yml, dest: datasources/snpedia.yml }
+    - { src: grafana-dashboards.yml, dest: dashboards/snpedia.yml }
+  loop_control:
+    label: "{{ item.dest }}"
+  notify: Restart grafana-server
+
+# Grafana picks up dashboard file changes on its own, so no restart is needed.
+- name: Copy the SNPedia dashboard
+  ansible.builtin.copy:
+    src: "{{ project_root }}/monitoring/snpedia-dashboard.json"
+    dest: "{{ grafana_dashboards_dir }}/snpedia-dashboard.json"
+    owner: root
+    group: grafana
+    mode: "0644"
+    validate: python3 -m json.tool %s
+
+- name: Enable and start Grafana
+  ansible.builtin.systemd_service:
+    name: grafana-server
+    enabled: true
+    state: started
+    daemon_reload: true
+
+- name: Apply pending Grafana restarts
+  ansible.builtin.meta: flush_handlers
+
+- name: Check that Grafana is healthy
+  ansible.builtin.uri:
+    url: http://127.0.0.1:3000/api/health
+    status_code: 200
+  register: grafana_health
+  until: grafana_health.status == 200
+  retries: 20
+  delay: 3
+  changed_when: false

@@ -1,0 +1,56 @@
+---
+# node_exporter is a recommended package, but it is not part of this project.
+- name: Install Prometheus
+  ansible.builtin.apt:
+    name: prometheus
+    state: present
+    install_recommends: false
+
+# Rules are copied before the main configuration, because
+# "promtool check config" also checks the rule files it references.
+- name: Copy the alerting rules
+  ansible.builtin.copy:
+    src: "{{ project_root }}/monitoring/alerts.yml"
+    dest: "{{ prometheus_rules_file }}"
+    owner: root
+    group: root
+    mode: "0644"
+    validate: promtool check rules %s
+  notify: Reload prometheus
+
+- name: Copy the Prometheus configuration
+  ansible.builtin.copy:
+    src: "{{ project_root }}/monitoring/prometheus.yml"
+    dest: /etc/prometheus/prometheus.yml
+    owner: root
+    group: root
+    mode: "0644"
+    validate: promtool check config %s
+  notify: Reload prometheus
+
+# Knowledge base trends change slowly, so keep more history than the 15-day default.
+- name: Set the data retention period
+  ansible.builtin.lineinfile:
+    path: /etc/default/prometheus
+    regexp: "^ARGS="
+    line: 'ARGS="--storage.tsdb.retention.time={{ prometheus_retention_time }}"'
+  notify: Restart prometheus
+
+- name: Enable and start Prometheus
+  ansible.builtin.systemd_service:
+    name: prometheus
+    enabled: true
+    state: started
+
+- name: Apply pending Prometheus reloads and restarts
+  ansible.builtin.meta: flush_handlers
+
+- name: Check that Prometheus is ready
+  ansible.builtin.uri:
+    url: http://127.0.0.1:9090/-/ready
+    status_code: 200
+  register: prometheus_ready
+  until: prometheus_ready.status == 200
+  retries: 10
+  delay: 3
+  changed_when: false

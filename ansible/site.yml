@@ -1,0 +1,38 @@
+---
+- name: Deploy SNPedia Knowledge Exporter with Prometheus and Grafana
+  hosts: all
+  become: true
+
+  vars:
+    project_root: "{{ playbook_dir }}/.."
+    # Settings read from exporter/config.yml, so the port is defined in one place.
+    snpedia_exporter_config: "{{ lookup('ansible.builtin.file', project_root + '/exporter/config.yml') | from_yaml }}"
+    snpedia_exporter_port: "{{ snpedia_exporter_config.port | default(9877) }}"
+
+    snpedia_exporter_user: snpedia-exporter
+    snpedia_exporter_install_dir: /opt/snpedia-exporter
+    snpedia_exporter_config_dir: /etc/snpedia-exporter
+
+    prometheus_rules_file: /etc/prometheus/alerts.yml
+    prometheus_retention_time: 90d
+
+    grafana_dashboards_dir: /var/lib/grafana/dashboards
+
+  pre_tasks:
+    - name: Update the APT package cache
+      ansible.builtin.apt:
+        update_cache: true
+        cache_valid_time: 3600
+
+  roles:
+    - role: snpedia_exporter
+    - role: prometheus
+    - role: grafana
+
+  post_tasks:
+    - name: Show service addresses
+      ansible.builtin.debug:
+        msg:
+          - "Exporter:   http://{{ ansible_host }}:{{ snpedia_exporter_port }}/metrics"
+          - "Prometheus: http://{{ ansible_host }}:9090"
+          - "Grafana:    http://{{ ansible_host }}:3000"

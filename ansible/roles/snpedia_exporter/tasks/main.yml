@@ -1,0 +1,111 @@
+---
+- name: Make sure a contact address is set in the User-Agent
+  ansible.builtin.assert:
+    that:
+      - "'example.com' not in snpedia_exporter_config.user_agent"
+    fail_msg: >-
+      Replace the example e-mail address in user_agent in exporter/config.yml
+      with your own contact address before deploying.
+    quiet: true
+
+- name: Install Python virtual environment support
+  ansible.builtin.apt:
+    name:
+      - python3
+      - python3-venv
+    state: present
+
+- name: Create the exporter system group
+  ansible.builtin.group:
+    name: "{{ snpedia_exporter_user }}"
+    system: true
+    state: present
+
+- name: Create the exporter system user
+  ansible.builtin.user:
+    name: "{{ snpedia_exporter_user }}"
+    group: "{{ snpedia_exporter_user }}"
+    system: true
+    shell: /usr/sbin/nologin
+    home: "{{ snpedia_exporter_install_dir }}"
+    create_home: false
+    state: present
+
+- name: Create the installation and configuration directories
+  ansible.builtin.file:
+    path: "{{ item.path }}"
+    state: directory
+    owner: root
+    group: "{{ item.group }}"
+    mode: "{{ item.mode }}"
+  loop:
+    - { path: "{{ snpedia_exporter_install_dir }}", group: root, mode: "0755" }
+    - { path: "{{ snpedia_exporter_config_dir }}", group: "{{ snpedia_exporter_user }}", mode: "0750" }
+  loop_control:
+    label: "{{ item.path }}"
+
+# The application files belong to root, so the service user can read but not modify them.
+- name: Copy the exporter application
+  ansible.builtin.copy:
+    src: "{{ project_root }}/exporter/{{ item.name }}"
+    dest: "{{ snpedia_exporter_install_dir }}/{{ item.name }}"
+    owner: root
+    group: root
+    mode: "{{ item.mode }}"
+  loop:
+    - { name: exporter.py, mode: "0755" }
+    - { name: requirements.txt, mode: "0644" }
+  loop_control:
+    label: "{{ item.name }}"
+  notify: Restart snpedia-exporter
+
+- name: Install Python dependencies into a virtual environment
+  ansible.builtin.pip:
+    requirements: "{{ snpedia_exporter_install_dir }}/requirements.txt"
+    virtualenv: "{{ snpedia_exporter_install_dir }}/venv"
+    virtualenv_command: python3 -m venv
+  notify: Restart snpedia-exporter
+
+# The configuration is checked with the exporter's own validation before it
+# replaces the current file, so a broken config never reaches the service.
+- name: Copy the exporter configuration
+  ansible.builtin.copy:
+    src: "{{ project_root }}/exporter/config.yml"
+    dest: "{{ snpedia_exporter_config_dir }}/config.yml"
+    owner: root
+    group: "{{ snpedia_exporter_user }}"
+    mode: "0640"
+    validate: >-
+      {{ snpedia_exporter_install_dir }}/venv/bin/python -B -c
+      "import sys; sys.path.insert(0, '{{ snpedia_exporter_install_dir }}');
+      import exporter; exporter.load_config(sys.argv[1])" %s
+  notify: Restart snpedia-exporter
+
+- name: Install the systemd service
+  ansible.builtin.template:
+    src: snpedia-exporter.service.j2
+    dest: /etc/systemd/system/snpedia-exporter.service
+    owner: root
+    group: root
+    mode: "0644"
+  notify: Restart snpedia-exporter
+
+- name: Enable and start the exporter
+  ansible.builtin.systemd_service:
+    name: snpedia-exporter
+    enabled: true
+    state: started
+    daemon_reload: true
+
+- name: Apply pending exporter restarts
+  ansible.builtin.meta: flush_handlers
+
+- name: Check that the exporter serves metrics
+  ansible.builtin.uri:
+    url: "http://127.0.0.1:{{ snpedia_exporter_port }}/metrics"
+    return_content: true
+  register: snpedia_exporter_metrics
+  until: "'snpedia_up' in (snpedia_exporter_metrics.content | default(''))"
+  retries: 10
+  delay: 3
+  changed_when: false
