@@ -1,0 +1,31 @@
+# SNPedia Knowledge Exporter configuration.
+# Only api_url, user_agent and categories are required. Other keys have defaults.
+
+# MediaWiki Action API endpoint of SNPedia.
+api_url: https://bots.snpedia.com/api.php
+
+# Identify yourself to SNPedia administrators: replace the address below
+# with your own contact e-mail.
+user_agent: "snpedia-knowledge-exporter/0.1 (your-email@example.com)"
+
+# How often data is fetched from SNPedia, in minutes (minimum 5).
+interval_minutes: 30
+
+# Port of the /metrics endpoint.
+port: 9877
+
+# SNPedia categories to count, with underscores instead of spaces.
+categories:
+  - Is_a_snp
+  - Is_a_genotype
+  - Is_a_gene
+  - Is_a_medical_condition
+  - Is_a_medicine
+
+# Optional settings (default values shown):
+# listen_address: 0.0.0.0
+# timeout_seconds: 30
+# min_request_interval_seconds: 2
+# max_retries: 3
+# maxlag: 5
+# log_level: INFO
