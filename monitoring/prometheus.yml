@@ -1,0 +1,18 @@
+# Prometheus configuration for the SNPedia Knowledge Exporter.
+# Deployed to /etc/prometheus/prometheus.yml by the Ansible "prometheus" role.
+
+global:
+  # The exporter refreshes its data every 30 minutes, so frequent scrapes add nothing.
+  scrape_interval: 60s
+  scrape_timeout: 10s
+  evaluation_interval: 60s
+
+rule_files:
+  - /etc/prometheus/alerts.yml
+
+scrape_configs:
+  # The job name is used by the SNPediaExporterDown alert and the dashboard.
+  - job_name: snpedia_exporter
+    static_configs:
+      - targets:
+          - localhost:9877

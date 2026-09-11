@@ -1,0 +1,16 @@
+# Grafana dashboard provisioning.
+# Deployed to /etc/grafana/provisioning/dashboards/snpedia.yml by the Ansible "grafana" role.
+
+apiVersion: 1
+
+providers:
+  - name: SNPedia
+    orgId: 1
+    folder: SNPedia
+    type: file
+    disableDeletion: true
+    # The dashboard is managed as code: edit the JSON file, not the Grafana UI.
+    allowUiUpdates: false
+    updateIntervalSeconds: 30
+    options:
+      path: /var/lib/grafana/dashboards

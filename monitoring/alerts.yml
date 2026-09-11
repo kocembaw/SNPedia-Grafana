@@ -1,0 +1,39 @@
+# Alerting rules for the SNPedia Knowledge Exporter.
+# Deployed to /etc/prometheus/alerts.yml by the Ansible "prometheus" role.
+# Active alerts are visible in the Alerts tab of the Prometheus UI.
+
+groups:
+  - name: snpedia
+    rules:
+      - alert: SNPediaExporterDown
+        expr: up{job="snpedia_exporter"} == 0
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: "SNPedia exporter is down"
+          description: >-
+            Prometheus cannot scrape {{ $labels.instance }}.
+            Check the service with: systemctl status snpedia-exporter
+
+      - alert: SNPediaApiUnreachable
+        expr: snpedia_up == 0
+        for: 1h
+        labels:
+          severity: warning
+        annotations:
+          summary: "SNPedia API is not responding"
+          description: >-
+            The exporter on {{ $labels.instance }} has not been able to fetch data
+            from SNPedia for over an hour. Metrics show the last known values.
+            Check the logs with: journalctl -u snpedia-exporter
+
+      - alert: SNPediaNoRecentChanges
+        expr: (time() - snpedia_last_change_timestamp_seconds) / 86400 > 30
+        for: 1h
+        labels:
+          severity: info
+        annotations:
+          summary: "SNPedia has not been edited for {{ $value | printf \"%.0f\" }} days"
+          description: >-
+            No edits or new pages have appeared in SNPedia for more than 30 days.
